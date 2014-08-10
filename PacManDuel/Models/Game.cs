@@ -26,22 +26,22 @@ namespace PacManDuel.Models
 
         public GameResult Run(String folderPath)
         {
-            var gamePlayDirectoryPath = System.Environment.CurrentDirectory + System.IO.Path.DirectorySeparatorChar + folderPath;
+            var gamePlayDirectoryPath = Path.Combine(Environment.CurrentDirectory, folderPath);
             Directory.CreateDirectory(gamePlayDirectoryPath);
-            var outputFilePath = gamePlayDirectoryPath + System.IO.Path.DirectorySeparatorChar + Properties.Settings.Default.SettingGamePlayFile;
+            var outputFilePath = Path.Combine(gamePlayDirectoryPath, Properties.Settings.Default.SettingGamePlayFile);
             _maze.WriteMaze(outputFilePath);
             Player winner = null;
             var gameOutcome = Enums.GameOutcome.ProceedToNextRound;
             Directory.CreateDirectory(folderPath);
-            Directory.CreateDirectory(folderPath + System.IO.Path.DirectorySeparatorChar + Properties.Settings.Default.SettingReplayFolder);
-            var logFile = new StreamWriter(folderPath + System.IO.Path.DirectorySeparatorChar + Properties.Settings.Default.SettingMatchLogFileName);
+            Directory.CreateDirectory(Path.Combine(folderPath, Properties.Settings.Default.SettingReplayFolder));
+            var logFile = new StreamWriter(Path.Combine(folderPath, Properties.Settings.Default.SettingMatchLogFileName));
             CreateIterationStateFile(folderPath);
             logFile.WriteLine("[GAME] : Match started");
             _iteration++;
             while (gameOutcome == Enums.GameOutcome.ProceedToNextRound)
             {
                 _currentPlayer = _playerPool.GetNextPlayer();
-                var mazeFromPlayer = _currentPlayer.GetMove(_maze, gamePlayDirectoryPath + System.IO.Path.DirectorySeparatorChar + Properties.Settings.Default.SettingGamePlayFile, logFile);
+                var mazeFromPlayer = _currentPlayer.GetMove(_maze, Path.Combine(gamePlayDirectoryPath, Properties.Settings.Default.SettingGamePlayFile), logFile);
                 if (mazeFromPlayer != null)
                 {
                     var mazeValidationOutcome = GetMazeValidationOutcome(logFile, mazeFromPlayer);
@@ -55,13 +55,16 @@ namespace PacManDuel.Models
                         {
                             RegenerateOpponentIfDead(opponentPosition, mazeFromPlayer);
                             gameOutcome = GetGameOutcome(mazeFromPlayer, logFile, gameOutcome, turnOutcome);
-                            winner = DeterminIfWinner(gameOutcome, mazeFromPlayer, winner);
+                            winner = DetermineIfWinner(gameOutcome, winner);
                         }
                         else gameOutcome = ProcessIllegalMove(logFile, gameOutcome, ref winner);
                     }
                     else gameOutcome = ProcessIllegalMove(logFile, gameOutcome, ref winner);
 
-                    _maze.WriteMaze(gamePlayDirectoryPath + System.IO.Path.DirectorySeparatorChar + Properties.Settings.Default.SettingGamePlayFile);
+                    _maze = mazeFromPlayer;
+                    _maze.SwapPlayerSymbols();
+                    _maze.WriteMaze(Path.Combine(gamePlayDirectoryPath, Properties.Settings.Default.SettingGamePlayFile));
+
                     Maze iterationFileMaze = CreateIterationStateFile(folderPath);
                     _iteration++;
                     foreach (var player in _playerPool.GetPlayers())
@@ -70,18 +73,20 @@ namespace PacManDuel.Models
                     }
                     Console.WriteLine();
                     iterationFileMaze.Print();
+
+                    
                 }
                 else gameOutcome = ProcessIllegalMove(logFile, gameOutcome, ref winner);
             }
 
             CreateMatchInfo(gameOutcome, winner, logFile);
             logFile.Close();
-            var replayMatchOutcome = new StreamWriter(folderPath + System.IO.Path.DirectorySeparatorChar + "replay" + System.IO.Path.DirectorySeparatorChar + "matchinfo.out");
+            var replayMatchOutcome = new StreamWriter(Path.Combine(folderPath, "replay", "matchinfo.out"));
             CreateMatchInfo(gameOutcome, winner, replayMatchOutcome);
             replayMatchOutcome.Close();
 
-            return new GameResult()
-            {
+            return new GameResult
+                {
                 Players = _playerPool.GetPlayers(),
                 Outcome = gameOutcome,
                 Iterations = _iteration - 1,
@@ -97,14 +102,8 @@ namespace PacManDuel.Models
             return gameOutcome;
         }
 
-        private Player DeterminIfWinner(Enums.GameOutcome gameOutcome, Maze mazeFromPlayer, Player winner)
+        private Player DetermineIfWinner(Enums.GameOutcome gameOutcome, Player winner)
         {
-            mazeFromPlayer.SwapPlayerSymbols();
-            _maze = mazeFromPlayer;
-            if (_maze.FindCoordinateOf(_secondMazePlayer).IsEmpty)
-            {
-                _maze.SetSymbol(Properties.Settings.Default.MazeCenterX, Properties.Settings.Default.MazeCenterY, _secondMazePlayer);
-            }
             if (gameOutcome != Enums.GameOutcome.ProceedToNextRound)
                 winner = GameJudge.DetermineWinner(_playerPool, gameOutcome);
             return winner;
@@ -142,10 +141,10 @@ namespace PacManDuel.Models
         private Maze CreateIterationStateFile(String folderPath)
         {
             var replayFile =
-                new StreamWriter(folderPath + System.IO.Path.DirectorySeparatorChar + Properties.Settings.Default.SettingReplayFolder + System.IO.Path.DirectorySeparatorChar + "iteration" +
-                                 _iteration + Properties.Settings.Default.SettingStateFileExtension);
+                new StreamWriter(Path.Combine(folderPath, Properties.Settings.Default.SettingReplayFolder, "iteration" +
+                                 _iteration + Properties.Settings.Default.SettingStateFileExtension));
             var mazeForFile = new Maze(_maze);
-            if ((_currentPlayer == null)||(_secondMazePlayer == _currentPlayer.GetSymbol()))
+            if ((_currentPlayer != null)&&(_secondMazePlayer == _currentPlayer.GetSymbol()))
                 mazeForFile.SwapPlayerSymbols();
             replayFile.Write(mazeForFile.ToFlatFormatString());
             replayFile.Close();
